@@ -1,0 +1,205 @@
+name: Build & Release + Docker
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.editorconfig'
+  workflow_dispatch:
+    # 只允许仓库所有者手动触发
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  CONFIGURATION: Release
+  PROJECT_PATH: 'src/TelegramMonitor.csproj'
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/telegramguanjianci
+
+concurrency:
+  group: auto-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check-permissions:
+    if: github.event_name == 'workflow_dispatch' && github.actor != github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check permissions
+        run: |
+          echo "❌ 只有仓库所有者可以手动触发此 workflow"
+          exit 1
+
+  prepare:
+    if: github.event_name != 'workflow_dispatch' || github.actor == github.repository_owner
+    runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.ver.outputs.VERSION }}
+      IMAGE_NAME_LC: ${{ steps.ver.outputs.IMAGE_NAME_LC }}
+    steps:
+      - id: ver
+        shell: bash
+        run: |
+          VERSION="1.$(TZ='Asia/Shanghai' date +'%Y%m%d.%H%M')"
+          IMAGE_NAME_LC=$(echo "ghcr.io/${{ github.repository_owner }}/telegramguanjianci" | tr '[:upper:]' '[:lower:]')
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_NAME_LC=$IMAGE_NAME_LC" >> "$GITHUB_OUTPUT"
+          echo "$VERSION" > version.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: version
+          path: version.txt
+          retention-days: 1
+
+  build:
+    if: github.event_name != 'workflow_dispatch' || github.actor == github.repository_owner
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          
+          - { name: linux-x64,      rid: linux-x64,   arch: amd64, artifact: TelegramMonitor-linux-x64.tar.gz,  pack: "tar -czf", docker: true }
+          - { name: linux-arm64,    rid: linux-arm64, arch: arm64, artifact: TelegramMonitor-linux-arm64.tar.gz,pack: "tar -czf", docker: true }
+          
+          - { name: osx-x64,        rid: osx-x64,     artifact: TelegramMonitor-osx-x64.zip,       pack: "zip -r -q", docker: false }
+          - { name: osx-arm64,      rid: osx-arm64,   artifact: TelegramMonitor-osx-arm64.zip,     pack: "zip -r -q", docker: false }
+          
+          - { name: windows-x86,    rid: win-x86,     artifact: TelegramMonitor-windows-x86.zip,   pack: "zip -r -q", docker: false }
+          - { name: windows-x64,    rid: win-x64,     artifact: TelegramMonitor-windows-x64.zip,   pack: "zip -r -q", docker: false }
+          - { name: windows-arm64,  rid: win-arm64,   artifact: TelegramMonitor-windows-arm64.zip,pack: "zip -r -q", docker: false }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Publish
+        run: |
+          dotnet publish "${{ env.PROJECT_PATH }}" \
+            --configuration "$CONFIGURATION" \
+            -r "${{ matrix.rid }}" \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -o "out/${{ matrix.rid }}"
+          find "out/${{ matrix.rid }}" -type f \( -name '*.pdb' -o -name '*.xml' \) -delete
+          cd "out/${{ matrix.rid }}"
+          ${{ matrix.pack }} "../${{ matrix.artifact }}" .
+          cd ../..
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: out/${{ matrix.artifact }}
+          retention-days: 3
+
+  docker-build:
+    if: github.event_name != 'workflow_dispatch' || github.actor == github.repository_owner
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: out/linux-amd64
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64
+          path: out/linux-arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: version
+          path: .
+      - name: Prepare binaries
+        run: |
+          
+          tar -xzf out/linux-amd64/TelegramMonitor-linux-x64.tar.gz -C out/linux-amd64 --strip-components=1
+          chmod +x out/linux-amd64/TelegramMonitor
+          
+          
+          tar -xzf out/linux-arm64/TelegramMonitor-linux-arm64.tar.gz -C out/linux-arm64 --strip-components=1
+          chmod +x out/linux-arm64/TelegramMonitor
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: ver
+        run: echo "VERSION=$(cat version.txt)" >> "$GITHUB_OUTPUT"
+      - name: Build and push multi-platform image
+        run: |
+          IMAGE_NAME_LC=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
+          
+          
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg BIN_NAME=TelegramMonitor \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.created=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --provenance=false \
+            --sbom=false \
+            --push \
+            -t $IMAGE_NAME_LC:latest \
+            -t $IMAGE_NAME_LC:${{ steps.ver.outputs.VERSION }} \
+            .
+          
+          
+          echo "=== Verifying multi-platform manifest ==="
+          docker buildx imagetools inspect $IMAGE_NAME_LC:latest
+          docker buildx imagetools inspect $IMAGE_NAME_LC:${{ steps.ver.outputs.VERSION }}
+
+  release:
+    if: github.repository == 'codeman9528/TelegramGuanJianCi' && (github.event_name != 'workflow_dispatch' || github.actor == github.repository_owner)
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - id: meta
+        run: |
+          echo "DATETIME=$(TZ='Asia/Shanghai' date +'%Y年%m月%d日 %H:%M:%S')" >> "$GITHUB_OUTPUT"
+          echo "COMMIT_MSG=$(git log -1 --pretty=format:'%s')" >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.prepare.outputs.VERSION }}
+          name: "Release ${{ needs.prepare.outputs.VERSION }}"
+          body: |
+            **发布时间：** ${{ steps.meta.outputs.DATETIME }}  
+            **发布者：** ${{ github.actor }}
+
+            **更新内容**  
+            ${{ steps.meta.outputs.COMMIT_MSG }}
+
+            Windows (x64 / x86 / ARM64)  
+            Linux (x64 / ARM64)  
+            macOS (Intel / Apple Silicon)  
+
+            Windows 用户请下载对应系统架构的 zip 文件  
+            • 64 位系统：`TelegramMonitor-windows-x64.zip`  
+            • 32 位系统：`TelegramMonitor-windows-x86.zip`  
+            • ARM64 系统：`TelegramMonitor-windows-arm64.zip`  
+
+            Linux 用户请下载对应架构的 tar.gz 文件  
+            • x64 架构：`TelegramMonitor-linux-x64.tar.gz`  
+            • ARM64 架构：`TelegramMonitor-linux-arm64.tar.gz`  
+
+            macOS 用户请下载对应架构的 zip 文件  
+            • Intel 芯片：`TelegramMonitor-osx-x64.zip`  
+            • Apple Silicon：`TelegramMonitor-osx-arm64.zip`
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz

@@ -1,0 +1,206 @@
+﻿<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>关键词管理</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+
+<body class="p-4 md:p-6 bg-base-200 min-h-screen">
+    <div id="toast" class="toast toast-top toast-center"></div>
+
+    <h1 class="text-2xl font-bold mb-4">关键词管理</h1>
+
+    <div role="tablist" class="tabs tabs-boxed mb-4">
+        <a role="tab" class="tab tab-active" id="tab-list">列表</a>
+        <a role="tab" class="tab" id="tab-single">单个添加</a>
+        <a role="tab" class="tab" id="tab-batch">动态行添加</a>
+        <a role="tab" class="tab" id="tab-text">文本批量</a>
+    </div>
+
+    <section id="panel-list">
+        <div class="mb-4 flex justify-between items-center">
+            <button class="btn btn-error" onclick="deleteSelected()">删除选中</button>
+            <button class="btn btn-primary" onclick="refresh()">刷新数据</button>
+        </div>
+
+        <div class="overflow-x-auto rounded-lg shadow">
+            <table class="table w-full bg-base-100">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" onclick="toggleAll(this)"></th>
+                        <th>ID</th>
+                        <th>内容</th>
+                        <th>类型</th>
+                        <th>动作</th>
+                        <th>样式</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="kwBody"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section id="panel-single" class="hidden">
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title">添加单个关键词</h2>
+                <div class="form-control w-full max-w-md mb-4">
+                    <label class="label"><span class="label-text">关键词内容</span></label>
+                    <input id="sContent" class="input input-bordered w-full" placeholder="请输入关键词">
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">匹配类型</span></label>
+                        <select id="sType" class="select select-bordered w-full">
+                            <option value="0">全字</option>
+                            <option value="1">包含</option>
+                            <option value="2">正则</option>
+                            <option value="3">模糊</option>
+                            <option value="4">用户</option>
+                        </select>
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">执行动作</span></label>
+                        <select id="sAction" class="select select-bordered w-full">
+                            <option value="1">监控</option>
+                            <option value="0">排除</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="divider">样式设置</div>
+                <div class="flex flex-wrap gap-2 mb-4">
+                    <label class="label gap-1"><span>大小写</span><input id="sCase" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-1"><span>粗体</span><input id="sBold" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-1"><span>斜体</span><input id="sItalic" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-1"><span>下划线</span><input id="sUnder" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-1"><span>删除线</span><input id="sStrike" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-1"><span>引用</span><input id="sQuote" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-1"><span>等宽</span><input id="sMono" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-1"><span>剧透</span><input id="sSpoil" type="checkbox" class="checkbox"></label>
+                </div>
+
+                <div class="card-actions justify-end">
+                    <button class="btn btn-primary" onclick="addSingle()">添加</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="panel-batch" class="hidden">
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title">动态行批量添加</h2>
+                <div id="dynamicRows" class="space-y-4 my-4"></div>
+                <div class="flex gap-2">
+                    <button class="btn btn-outline" onclick="addRow()">+ 添加行</button>
+                    <button class="btn btn-primary" onclick="uploadRows()">批量上传</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="panel-text" class="hidden">
+        <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title">文本批量添加</h2>
+                <div class="form-control">
+                    <label class="label"><span class="label-text">每行一个关键词</span></label>
+                    <textarea id="txtKeywords" class="textarea textarea-bordered w-full h-40" placeholder="每行一个关键词"></textarea>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">匹配类型</span></label>
+                        <select id="tType" class="select select-bordered w-full">
+                            <option value="0">全字</option>
+                            <option value="1">包含</option>
+                            <option value="2">正则</option>
+                            <option value="3">模糊</option>
+                            <option value="4">用户</option>
+                        </select>
+                    </div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">执行动作</span></label>
+                        <select id="tAction" class="select select-bordered w-full">
+                            <option value="1">监控</option>
+                            <option value="0">排除</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="divider">样式设置</div>
+                <div class="flex flex-wrap gap-4 mb-4">
+                    <label class="label gap-2"><span>大小写</span><input id="tCase" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>粗体</span><input id="tBold" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>斜体</span><input id="tItalic" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>下划线</span><input id="tUnder" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>删除线</span><input id="tStrike" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>引用</span><input id="tQuote" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>等宽</span><input id="tMono" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>剧透</span><input id="tSpoil" type="checkbox" class="checkbox"></label>
+                </div>
+
+                <div class="card-actions justify-end">
+                    <button class="btn btn-primary" onclick="uploadText()">上传</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <dialog id="editModal" class="modal">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg mb-4">编辑关键词</h3>
+            <div class="space-y-4">
+                <input id="eId" type="hidden">
+                <div class="form-control">
+                    <label class="label"><span class="label-text">关键词内容</span></label>
+                    <input id="eContent" class="input input-bordered w-full" placeholder="关键词内容">
+                </div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text">匹配类型</span></label>
+                    <select id="eType" class="select select-bordered w-full">
+                        <option value="0">全字</option>
+                        <option value="1">包含</option>
+                        <option value="2">正则</option>
+                        <option value="3">模糊</option>
+                        <option value="4">用户</option>
+                    </select>
+                </div>
+                <div class="form-control">
+                    <label class="label"><span class="label-text">执行动作</span></label>
+                    <select id="eAction" class="select select-bordered w-full">
+                        <option value="1">监控</option>
+                        <option value="0">排除</option>
+                    </select>
+                </div>
+                
+                <div class="divider">样式设置</div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <label class="label gap-2"><span>大小写</span><input id="eCase" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>粗体</span><input id="eBold" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>斜体</span><input id="eItalic" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>下划线</span><input id="eUnder" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>删除线</span><input id="eStrike" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>引用</span><input id="eQuote" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>等宽</span><input id="eMono" type="checkbox" class="checkbox"></label>
+                    <label class="label gap-2"><span>剧透</span><input id="eSpoil" type="checkbox" class="checkbox"></label>
+                </div>
+            </div>
+            <div class="modal-action">
+                <form method="dialog">
+                    <button class="btn btn-primary mr-2" onclick="saveEdit()">保存</button>
+                    <button class="btn">取消</button>
+                </form>
+            </div>
+        </div>
+    </dialog>
+
+    <script src="keywords.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<Nullable>disable</Nullable>
+		<NoWarn>1701;1702;1591;8632</NoWarn>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>	
+		<PublishReadyToRunComposite>true</PublishReadyToRunComposite>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<CopyRazorGenerateFilesToPublishDirectory>true</CopyRazorGenerateFilesToPublishDirectory>
+		<CopyOutputSymbolsToPublishDirectory>true</CopyOutputSymbolsToPublishDirectory>
+		<CopyRazorFilesToPublishDirectory>true</CopyRazorFilesToPublishDirectory>
+
+
+	</PropertyGroup>
+	<PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+		<DebugType>none</DebugType>
+		<DebugSymbols>false</DebugSymbols>
+	</PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="Furion.Extras.ObjectMapper.Mapster" Version="4.9.7.107" />
+		<PackageReference Include="Furion.Pure" Version="4.9.7.107" />
+		<PackageReference Include="SqlSugarCore" Version="5.1.4.199" />
+		<PackageReference Include="WTelegramClient" Version="4.3.7" />
+		<PackageReference Include="xNetStandard" Version="1.1.0" />
+	</ItemGroup>
+
+</Project>
